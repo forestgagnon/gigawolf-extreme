@@ -24,16 +24,20 @@ function botsRow(count, onChange) {
       h('button', { class: 'btn small', 'aria-label': t('lobby.more', { label: t('lobby.bots') }), disabled: count >= MAX_BOTS, onClick: () => onChange(clamp(count + 1)) }, '+'),
     ));
 }
+// A setting with an on/off switch; the whole row is tappable.
 function toggle(label, on, onChange) {
   return h('label', { class: 'row toggle' }, h('span', null, label),
-    h('input', { type: 'checkbox', checked: on ? true : null, onChange: (e) => onChange(e.target.checked) }));
+    h('input', { type: 'checkbox', role: 'switch', checked: on ? true : null, onChange: (e) => onChange(e.target.checked) }));
 }
+// Rows in a group get alternating backgrounds.
+const rows = (...kids) => h('div', { class: 'rows' }, ...kids);
 
 export function lobbyScreen(view, ctx) {
   const s = view.settings; const n = view.players.length;
   const link = `${location.origin}${location.pathname}?join=${view.roomCode}`;
   const set = (patch) => ctx.send('settings', { patch });
-  const c = s.counts;
+  // Presets leave out roles they don't use; show those as 0.
+  const c = s.counts && Object.fromEntries(COUNT_KEYS.map((k) => [k, s.counts[k] ?? 0]));
   const setCounts = (k, val) => {
     const next = { ...c, [k]: val };
     if (k !== 'villagers') next.villagers = n - COUNT_KEYS.filter((x) => x !== 'villagers').reduce((sum, x) => sum + next[x], 0);
@@ -61,24 +65,26 @@ export function lobbyScreen(view, ctx) {
                 h('strong', null, t('lobby.randomOn')),
                 h('p', null, t('lobby.randomWhat')),
                 h('p', null, t('lobby.randomHint')),
-                toggle(t('lobby.noVillagers'), !!s.noVillagers, (v) => set({ noVillagers: v })),
+                rows(toggle(t('lobby.noVillagers'), !!s.noVillagers, (v) => set({ noVillagers: v }))),
                 s.noVillagers && h('p', null, t('lobby.noVillagersHint')))
             : h('p', { class: 'sub small' }, t('lobby.manualHint')),
-          c && stepper(t('lobby.wolves'), c.wolves, (v) => setCounts('wolves', v), 0, Math.max(7, Math.ceil(n / 2))),
-          c && stepper(t('lobby.seer'), c.seer, (v) => setCounts('seer', v), c.apprentice, 3),
-          c && stepper(t('lobby.bodyguard'), c.bodyguard, (v) => setCounts('bodyguard', v), 0, 3),
-          c && ['wolfcub', 'hunter', 'witch', 'prince', 'diseased', 'apprentice', 'poltergeist', 'jester'].map((k) =>
-            stepper(t(`lobby.${k}`), c[k], (v) => setCounts(k, v), 0, k === 'apprentice' ? Math.min(3, c.seer) : 3)),
+          c && rows(
+            stepper(t('lobby.wolves'), c.wolves, (v) => setCounts('wolves', v), 0, Math.max(7, Math.ceil(n / 2))),
+            stepper(t('lobby.seer'), c.seer, (v) => setCounts('seer', v), c.apprentice, 3),
+            stepper(t('lobby.bodyguard'), c.bodyguard, (v) => setCounts('bodyguard', v), 0, 3),
+            ['wolfcub', 'hunter', 'witch', 'prince', 'diseased', 'apprentice', 'poltergeist', 'jester'].map((k) =>
+              stepper(t(`lobby.${k}`), c[k], (v) => setCounts(k, v), 0, k === 'apprentice' ? Math.min(3, c.seer) : 3)),
+            h('div', { class: 'row total' }, h('span', null, t('lobby.villagers')), h('span', { class: 'num' }, c.villagers))),
           c && c.apprentice > 0 && h('p', { class: 'sub small' }, t('lobby.apprenticeHint')),
-          c && h('div', { class: 'row' }, h('span', null, t('lobby.villagers')), h('span', { class: 'num' }, c.villagers)),
           !s.randomize && h('button', { class: 'btn small', onClick: () => set({ counts: null }) }, t('lobby.reset')),
-          botsRow(bots, (v) => ctx.setBots(v)),
+          rows(botsRow(bots, (v) => ctx.setBots(v))),
           bots > 0 && h('p', { class: 'sub small' }, t('lobby.botsHint')),
           h('h3', null, t('lobby.options')),
-          toggle(t('lobby.revealOnDeath'), s.revealOnDeath, (v) => set({ revealOnDeath: v })),
-          toggle(t('lobby.hideVotes'), !!s.hideVotes, (v) => set({ hideVotes: v })),
-          toggle(t('lobby.selfProtect'), s.bodyguardSelfProtect, (v) => set({ bodyguardSelfProtect: v })),
-          toggle(t('lobby.narration'), s.narration, (v) => set({ narration: v })),
+          rows(
+            toggle(t('lobby.revealOnDeath'), s.revealOnDeath, (v) => set({ revealOnDeath: v })),
+            toggle(t('lobby.hideVotes'), !!s.hideVotes, (v) => set({ hideVotes: v })),
+            toggle(t('lobby.selfProtect'), s.bodyguardSelfProtect, (v) => set({ bodyguardSelfProtect: v })),
+            toggle(t('lobby.narration'), s.narration, (v) => set({ narration: v }))),
           view.setup && !view.setup.ok && h('p', { class: 'error' }, view.setup.errors.map(tr).join(' ')),
           h('button', { class: 'btn primary', disabled: !(view.setup?.ok) || n < MIN_PLAYERS, onClick: () => ctx.send('startGame') },
             n < MIN_PLAYERS ? t('lobby.needMore', { n: MIN_PLAYERS - n, s: MIN_PLAYERS - n === 1 ? '' : 's' }) : s.randomize ? t('lobby.startRandom') : t('lobby.start')))
