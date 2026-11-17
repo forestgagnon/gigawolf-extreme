@@ -7,8 +7,8 @@ import { randomId } from './net/protocol.js';
 import { t, tr, getLang, setLang } from './i18n.js';
 import { storage } from './util/storage.js';
 import { keepAwake, releaseAwake } from './util/wakelock.js';
-import { speak, unlock } from './ui/narrator.js';
-import { startMusic, stopMusic, refreshMusicLabels } from './ui/music.js';
+import { speak } from './ui/narrator.js';
+import { enterRoom, leaveRoom, refreshSoundLabels } from './ui/sound.js';
 import { APP_VERSION, normalizeRoomCode } from './config.js';
 import { homeScreen } from './ui/screens/home.js';
 import { lobbyScreen } from './ui/screens/lobby.js';
@@ -25,7 +25,7 @@ const $banner = document.getElementById('banner');
 const $toast = document.getElementById('toast');
 const params = new URLSearchParams(location.search);
 
-const app = { client: null, host: null, view: null, status: null, error: null, prevKey: null, connecting: false };
+const app = { client: null, host: null, view: null, status: null, error: null, prevKey: null, connecting: false, narrSeq: undefined };
 const ui = { pick: null, holding: false, key: null };
 
 const SESSION_KEY = 'gigawolf.session';
@@ -44,7 +44,7 @@ function resetToHome(error = null) {
   app.client = null; app.host = null; app.view = null; app.status = null; app.connecting = false;
   app.error = error;
   releaseAwake();
-  stopMusic();
+  leaveRoom();
   render();
 }
 
@@ -62,11 +62,21 @@ function wire(client) {
     toast(tr(e.message));
   };
   client.onView = (view) => {
+    sayNarration(view);
     onViewChange(app.view, view);
     app.view = view;
     render();
   };
-  client.onWelcome = () => { app.connecting = false; };
+  client.onWelcome = () => { app.connecting = false; app.narrSeq = undefined; };
+}
+
+// Narration rides on views as { seq, text }. The first view after (re)connecting only records the
+// current line, so a phone that rejoins doesn't repeat something said a while ago.
+function sayNarration(view) {
+  const n = view.narration ?? null;
+  const seq = n?.seq ?? 0;
+  if (n && app.narrSeq !== undefined && seq !== app.narrSeq) speak(n.text);
+  app.narrSeq = seq;
 }
 
 function onViewChange(prev, next) {
@@ -83,11 +93,10 @@ function onViewChange(prev, next) {
 async function hostGame(name, resume = null) {
   if (app.connecting) return;
   app.connecting = true; app.error = null; render();
-  unlock(); // iOS: allow speech later
-  startMusic(); // inside the tap, so autoplay is allowed
+  enterRoom({ isHost: true, roomCode: null }); // inside the tap, so music and speech are allowed to start
   storage.set(NAME_KEY, name);
   const hostId = resume?.hostId ?? randomId();
-  const host = new Host({ Peer: window.Peer, hostPlayerId: hostId, storage, onNarrate: speak, resume });
+  const host = new Host({ Peer: window.Peer, hostPlayerId: hostId, storage, resume });
   try { await host.start(); }
   catch (e) {
     app.connecting = false;
@@ -111,6 +120,7 @@ function joinGame(code, name, retryFirst = false) {
   app.connecting = true; app.error = null; storage.set(NAME_KEY, name);
   const playerId = getPid(code);
   storage.set(SESSION_KEY, { roomCode: code, playerId, name, isHost: false });
+  enterRoom({ isHost: false, roomCode: code });
   const client = new Client({ playerId, name, retryFirst, connector: peerConnector(window.Peer, code) });
   wire(client);
   client.start();
@@ -244,11 +254,11 @@ $refresh.type = 'button'; $refresh.id = 'refresh'; $refresh.textContent = t('ref
 $refresh.addEventListener('click', () => forceRefresh($refresh));
 const $tools = document.createElement('div');
 $tools.id = 'tools'; $tools.append($refresh);
-$ver.after($tools); // the music panel joins this row when hosting
+$ver.after($tools); // the sound panel joins this row while in a room
 
 // Language switch (English default). Fixed button; re-renders the current screen.
 const $lang = document.getElementById('lang');
-function syncLang() { $refresh.textContent = t('refresh.button'); $lang.textContent = t('lang.button'); $lang.setAttribute('aria-label', getLang() === 'en' ? 'ภาษาไทย' : 'English'); document.documentElement.lang = getLang(); refreshMusicLabels(); }
+function syncLang() { $refresh.textContent = t('refresh.button'); $lang.textContent = t('lang.button'); $lang.setAttribute('aria-label', getLang() === 'en' ? 'ภาษาไทย' : 'English'); document.documentElement.lang = getLang(); refreshSoundLabels(); }
 $lang.addEventListener('click', () => { setLang(getLang() === 'en' ? 'th' : 'en'); syncLang(); render(); });
 syncLang();
 boot();

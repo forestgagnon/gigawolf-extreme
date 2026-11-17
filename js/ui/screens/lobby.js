@@ -1,7 +1,6 @@
 import { h, playerList } from '../dom.js';
 import { MIN_PLAYERS, COUNT_KEYS, MAX_BOTS, isBotId } from '../../game/setup.js';
 import { t, tr } from '../../i18n.js';
-import { unlock } from '../narrator.js';
 import { formatRoomCode } from '../../config.js';
 
 function stepper(label, value, onChange, min = 0, max = 15) {
@@ -81,7 +80,7 @@ export function lobbyScreen(view, ctx) {
           toggle(t('lobby.selfProtect'), s.bodyguardSelfProtect, (v) => set({ bodyguardSelfProtect: v })),
           toggle(t('lobby.narration'), s.narration, (v) => set({ narration: v })),
           view.setup && !view.setup.ok && h('p', { class: 'error' }, view.setup.errors.map(tr).join(' ')),
-          h('button', { class: 'btn primary', disabled: !(view.setup?.ok) || n < MIN_PLAYERS, onClick: () => { unlock(); ctx.send('startGame'); } },
+          h('button', { class: 'btn primary', disabled: !(view.setup?.ok) || n < MIN_PLAYERS, onClick: () => ctx.send('startGame') },
             n < MIN_PLAYERS ? t('lobby.needMore', { n: MIN_PLAYERS - n, s: MIN_PLAYERS - n === 1 ? '' : 's' }) : s.randomize ? t('lobby.startRandom') : t('lobby.start')))
       : h('p', { class: 'sub' }, t('lobby.waiting')),
   );

@@ -28,7 +28,7 @@ export class Host {
    * @param {string}   o.hostPlayerId
    * @param {object}   [o.resume]      saved { state, rngState, roomCode }
    * @param {object}   [o.storage]     { get(key), set(key, val), remove(key) }
-   * @param {Function} [o.onNarrate]   (text) => void   (host phone speaks)
+   * @param {Function} [o.onNarrate]   (text) => void, called for each narrated line (phones speak from views)
    * @param {Function} [o.now]
    */
   constructor({ Peer, hostPlayerId, resume = null, storage = null, onNarrate = () => {}, now = Date.now, seed, peerOptions = PEER_OPTIONS, botDelays = {} }) {
@@ -46,6 +46,7 @@ export class Host {
     this.state = null;
     this.bots = new HostBots(this, botDelays);
     this.lazy = { save: null, broadcast: null, savedAt: 0, sentAt: 0 }; // big rooms (bots): throttle save + views
+    this.narration = null; // latest line { seq, text }, sent with every view; each phone decides whether to speak it
     if (resume) {
       this.state = resume.state;
       this.rng.setState(resume.rngState);
@@ -220,9 +221,11 @@ export class Host {
   }
 
   _afterApply(effects) {
+    const lines = [];
     for (const e of effects) {
-      if (e.type === 'narrate' && this.state.settings.narration) this.onNarrate(e.text);
+      if (e.type === 'narrate' && this.state.settings.narration) { lines.push(e.text); this.onNarrate(e.text); }
     }
+    if (lines.length) this.narration = { seq: (this.narration?.seq ?? 0) + 1, text: lines.join(' ') };
     this.bots.onChange();
     if (this.state.players.length > BIG_ROOM) { this._lazy('save', 1000, () => this._save()); this._lazy('broadcast', 150, () => this._broadcast()); return; }
     this._save();
@@ -247,7 +250,7 @@ export class Host {
     const conn = this.conns.get(playerId);
     if (!conn) return;
     const view = viewFor(this.state, playerId);
-    if (view) this._send(conn, msg.view(view));
+    if (view) this._send(conn, msg.view(this.narration ? { ...view, narration: this.narration } : view));
   }
 
   _broadcast() { for (const id of this.conns.keys()) this._sendView(id); }

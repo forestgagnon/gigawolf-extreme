@@ -82,6 +82,48 @@ test('clients cannot spoof: unknown kinds rejected, host-only actions refused, n
   h.host.close();
 });
 
+// Start a game and get everyone through the role reveal into the first night ("Night falls…" is narrated).
+async function toFirstNight(h, a) {
+  h.client.send('startGame');
+  await until(() => h.view.phase === 'reveal' && a.view.phase === 'reveal');
+  h.client.send('ready'); a.client.send('ready');
+  await until(() => h.view.progress && h.view.progress.done === h.view.progress.total);
+  h.client.send('nextPhase');
+  await until(() => h.view.phase === 'night' && a.view.phase === 'night');
+}
+
+test('narration goes to every phone with each view, numbered so each line is spoken once', async () => {
+  const net = createFakeNetwork();
+  const said = [];
+  const h = await mkHost(net, { onNarrate: (t) => said.push(t) });
+  const a = mkClient(net, h.host.roomCode, 'player-aaaa', 'Ann'); a.client.start();
+  await until(() => a.view);
+  assert.equal(a.view.narration, undefined, 'nothing said yet');
+  addBots(h.host, 4, { minDelay: 1, maxDelay: 5 });
+  await until(() => h.view.players.length === 6);
+  await toFirstNight(h, a);
+  const first = h.host.narration;
+  assert.ok(first, 'night falls is narrated');
+  await until(() => a.view.narration?.seq === first.seq && h.view.narration?.seq === first.seq);
+  assert.equal(a.view.narration.text, first.text);
+  assert.ok(said.length >= 1);
+  h.host.close();
+});
+
+test('narration setting off: no lines are sent', async () => {
+  const net = createFakeNetwork();
+  const h = await mkHost(net);
+  const a = mkClient(net, h.host.roomCode, 'player-aaaa', 'Ann'); a.client.start();
+  await until(() => a.view);
+  h.client.send('settings', { patch: { narration: false } });
+  addBots(h.host, 4, { minDelay: 1, maxDelay: 5 });
+  await until(() => h.view.players.length === 6);
+  await toFirstNight(h, a);
+  assert.equal(h.host.narration, null);
+  assert.equal(a.view.narration, undefined);
+  h.host.close();
+});
+
 async function fullGame(net, h, n) {
   // host + bots; start; wait for gameover
   addBots(h.host, n - 1, { minDelay: 1, maxDelay: 15 });
