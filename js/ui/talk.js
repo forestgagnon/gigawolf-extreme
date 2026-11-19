@@ -6,6 +6,7 @@ import { BOT_TAG } from '../game/setup.js';
 import { sayChip } from './quickchat.js';
 
 const SEER = new Set(['claimWolf', 'claimClean', 'reportWolf', 'reportClean', 'counter']);
+const GUARD = new Set(['claimGuard', 'counterGuard']);
 const short = (name) => (name?.endsWith(BOT_TAG) ? name.slice(0, -BOT_TAG.length) : name ?? '?');
 let shown = { round: -1, seq: 0 }; // lines already on screen, so only new ones pop in
 // Where the full talk sheet is scrolled. The sheet is rebuilt on every view, so it puts itself back: at the
@@ -29,7 +30,7 @@ export function talkOn(view) {
 }
 
 function bubble(view, c, isNew) {
-  return h('li', { class: `bubble${SEER.has(c.key) ? ' seer' : ''}${isNew ? ' new' : ''}` },
+  return h('li', { class: `bubble${SEER.has(c.key) ? ' seer' : ''}${GUARD.has(c.key) ? ' guard' : ''}${isNew ? ' new' : ''}` },
     h('strong', null, chatAuthor(view, c)), ' ', chatText(view, c));
 }
 

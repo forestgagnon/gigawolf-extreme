@@ -24,7 +24,7 @@ export const PERSONA = Object.freeze({
 export const DAY_BEFORE_ACCUSE = 0.25;
 const LINES_PER_ROUND = 3; // the engine allows 4; a mind keeps one spare, for answering a person late
 const CLAIM_KEYS = new Set(['claimWolf', 'claimClean', 'reportWolf', 'reportClean', 'counter']);
-const POINT_KEYS = new Set(['accuse', 'agree', 'claimWolf', 'reportWolf', 'counter']);
+const POINT_KEYS = new Set(['accuse', 'agree', 'claimWolf', 'reportWolf', 'counter', 'counterGuard']);
 
 export class BotMind {
   constructor(id, persona, rand = Math.random) {
@@ -46,6 +46,10 @@ export class BotMind {
     this.claimed = false;        // this bot went public as Seer (truly or not)
     this.announced = new Set();  // checks already told
     this.countered = new Set();  // claimants this bot already called liars
+    this.guardClaims = [];       // { by, target, round } from "I'm the Bodyguard, I guarded A" (people only; no bot claims it)
+    this.guardClaimants = new Set(); // everyone who has claimed Bodyguard, in a claim or a counter
+    this.guardPairs = new Set(); // rival pairs already marked, so a repeat claim does not count twice
+    this.pleas = new Map();      // id -> the round a plea to protect them was posted ("protect me", "protect A")
     this.day = { round: -1 };    // per-round memory
   }
 
@@ -86,6 +90,9 @@ export class BotMind {
       this.seenChat = c.seq;
       if (c.by === this.id) continue;
       const [a] = c.ids;
+      if (c.key === 'claimGuard' || c.key === 'counterGuard') this.readGuard(c);
+      if (c.key === 'protectMe') this.pleas.set(c.by, c.round);
+      if (c.key === 'protectThem' && a) this.pleas.set(a, c.round);
       if (CLAIM_KEYS.has(c.key)) {
         this.claimants.add(c.by);
         if (c.key !== 'counter') this.claims.push({ by: c.by, target: a, wolf: c.key === 'claimWolf' || c.key === 'reportWolf', round: c.round });
@@ -114,6 +121,26 @@ export class BotMind {
         if (!isWolf(role)) this.facts.push({ voter, victim: eliminatedId, round });
       }
     }
+  }
+
+  // Bodyguard talk. Nothing a Bodyguard says can be checked (the save looks like any quiet night), so it is only a
+  // soft signal: two claimants cannot both be the one Bodyguard, the Bodyguard may not guard the same player two
+  // nights running, and a counter says somebody is lying. A claim never clears its target.
+  readGuard(c) {
+    const [a] = c.ids;
+    if (c.key === 'counterGuard') this.bump(a, 1);
+    else {
+      const prev = this.guardClaims.findLast((g) => g.by === c.by);
+      if (prev && prev.target === a && prev.round === c.round - 1) this.bump(c.by, 2); // the same guard two nights running
+      this.guardClaims.push({ by: c.by, target: a, round: c.round });
+    }
+    for (const other of this.guardClaimants) {
+      const pair = [other, c.by].sort().join('|');
+      if (other === c.by || this.guardPairs.has(pair)) continue;
+      this.guardPairs.add(pair);
+      this.bump(other, 1); this.bump(c.by, 1);
+    }
+    this.guardClaimants.add(c.by);
   }
 
   // A claim proven wrong by a revealed role marks the claimant as a liar.
@@ -211,6 +238,9 @@ export class BotMind {
     if (this.role === 'bodyguard') {
       const seer = t.find((id) => this.claimants.has(id) && this.score(id) < 1);
       if (seer && this.chance(0.8)) return { kind: 'nightPick', extra: { targetId: seer } };
+      // Somebody asked for protection today and this bot does not suspect them. Anyone may ask, wolves included.
+      const asked = t.filter((id) => this.pleas.get(id) === r - 1 && this.score(id) < 0.5);
+      if (asked.length && this.chance(0.5)) return { kind: 'nightPick', extra: { targetId: this.best(asked, (id) => -this.score(id)).id } };
       if (t.includes(this.id) && this.chance(0.4)) return { kind: 'nightPick', extra: { targetId: this.id } };
       const c = this.best(t, (id) => -this.score(id));
       return { kind: 'nightPick', extra: { targetId: c.id } };
@@ -344,8 +374,22 @@ export class BotMind {
       const c = this.best(pool, (id) => -this.score(id));
       if (c && c.v > 0.5) return this.line('vouch', c.id);
     }
+    const plea = this.pleaLine(others);
+    if (plea) return plea;
     if (this.once('filler') && this.chance(0.4)) return this.line('filler');
     return null;
+  }
+
+  // "Please protect me / A": asking whoever can protect someone, naming no role. The rule uses only public facts and
+  // this bot's own reads, never its role: a public Seer claimant (real or fake) asks for itself, a bot under fire
+  // sometimes does, a bot that trusts a claimed Seer asks for them, and everyone has a small base rate.
+  pleaLine(others) {
+    if (!this.once('plea')) return null;
+    if (this.claimed && this.chance(0.6)) return this.line('protectMe');
+    if (this.underFire() && this.chance(0.15)) return this.line('protectMe');
+    const trusted = others.filter((id) => this.claimants.has(id) && !this.fakeChecked.has(id) && this.score(id) < 1);
+    if (trusted.length && this.chance(0.2)) return this.line('protectThem', this.pick(trusted));
+    return this.chance(0.03) ? this.line('protectMe') : null;
   }
 
   // Reacting to a line that just appeared: Seer fights, defending oneself, joining a pile-on.

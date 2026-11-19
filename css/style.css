@@ -66,7 +66,7 @@ button.player { cursor: pointer; }
 @keyframes pulse { 50% { opacity: .35; } }
 .tag { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: var(--panel2); color: var(--muted); }
 .tag.wolf { background: #3a2250; color: var(--wolf); }
-/* Bot table talk: chat bubbles, newest last. Seer talk gets the Seer's blue. */
+/* Bot table talk: chat bubbles, newest last. Seer talk gets the Seer's blue, Bodyguard talk a green. */
 .talk { display: flex; flex-direction: column; gap: 6px; }
 .talk h3 { margin: 4px 0 0; font-size: .8rem; }
 .talk-box { position: relative; }
@@ -92,12 +92,14 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px); -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
 .talk-sheet .bubble { background: var(--bg); }
 .talk-sheet .bubble.seer { background: #172238; }
+.talk-sheet .bubble.guard { background: #14281d; }
 .bubbles.full:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
 .talk-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); min-height: 32px; padding: 4px 14px; border-radius: 999px;
   border: 1px solid var(--accent); background: var(--panel2); color: var(--accent); font: inherit; font-size: .8rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgb(0 0 0 / .4); }
 .bubble { background: var(--panel); border-radius: 4px 14px 14px 14px; padding: 8px 12px; font-size: .95rem; line-height: 1.35; border-left: 3px solid var(--panel2); overflow-wrap: anywhere; }
 .bubble strong { color: var(--accent); font-weight: 700; }
 .bubble.seer { border-left-color: #60a5fa; background: #172238; }
+.bubble.guard { border-left-color: #4ade80; background: #14281d; }
 .bubble.seer strong { color: #60a5fa; }
 .bubble.new { animation: bubble-in .35s ease-out both; }
 @keyframes bubble-in { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }

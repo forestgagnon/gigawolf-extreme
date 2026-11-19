@@ -3,7 +3,7 @@ export const GAME_TITLE = 'Gigawolf Extreme';
 export const PROTOCOL_VERSION = 1;
 // App release version, shown in the footer so stale cached clients are easy to spot.
 // Keep in sync with package.json and index.html (tests enforce this). Bump it on EVERY change.
-export const APP_VERSION = '1.32.0';
+export const APP_VERSION = '1.33.0';
 
 export const ROOM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 export const ROOM_CODE_LENGTH = 8;

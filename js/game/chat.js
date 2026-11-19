@@ -14,6 +14,10 @@ export const CHAT = Object.freeze({
   reportWolf: { ids: 1, variants: 2 }, // a claimed Seer's later checks
   reportClean: { ids: 1, variants: 2 },
   counter:    { ids: 1, variants: 2 }, // "A is lying, I'm the real Seer"
+  claimGuard: { ids: 1, variants: 2 }, // "I'm the Bodyguard, I guarded A last night" (people only; bots never claim it)
+  counterGuard: { ids: 1, variants: 2 }, // "A is lying, I'm the real Bodyguard" (people only)
+  protectMe:  { ids: 0, variants: 3 }, // "please protect me" (asks whoever can protect someone; names no role)
+  protectThem: { ids: 1, variants: 3 }, // "please protect A"
   detective:  { ids: 2, variants: 2 }, // "A voted for B, and B was a villager"
   voteFor:    { ids: 1, variants: 3 }, // said just before voting
   voteSkip:   { ids: 0, variants: 2 },
@@ -30,19 +34,21 @@ export const CHAT_PER_ROUND = 4;     // most lines one bot may post in one round
 // role can post any of them, a lie included, just like a bot's claim. A human line has exactly the weight a
 // bot's has: bots read chat by kind, never by who wrote it.
 export const HUMAN_KEYS = Object.freeze([
-  'accuse', 'agree', 'vouch', 'defend', 'bait', 'claimWolf', 'claimClean', 'counter', 'voteFor', 'voteSkip',
+  'accuse', 'agree', 'vouch', 'defend', 'protectMe', 'protectThem', 'bait', 'claimWolf', 'claimClean', 'counter', 'claimGuard', 'counterGuard', 'voteFor', 'voteSkip',
 ]);
 // Day 0 ("The Day Before") has no deaths, no vote and no night behind it, so a line that leans on any of those
 // makes no sense there. Audit of every kind of line:
-//   allowed  accuse, agree, vouch, defend, filler   (a hunch, a reaction, a reply to being accused, small talk)
+//   allowed  accuse, agree, vouch, defend, protectMe, protectThem, filler
+//            (a hunch, a reaction, a reply to being accused, a plea for tonight's protection, small talk)
 //   refused  rip, gotOne, oops          nobody has died or been voted out
 //            detective                  no vote to quote
 //            claimWolf, claimClean, reportWolf, reportClean, counter
 //                                       nobody can have a Seer result before night 1
+//            claimGuard, counterGuard   nobody can have guarded anyone before night 1
 //            bait, voteFor, voteSkip    there is no vote ("vote me", "I'm skipping this one")
 // The engine refuses the refused kinds on round 0 for bots and people alike, the bot mind never picks them there,
 // and the Say sheet does not list them.
-export const DAY_BEFORE_KEYS = Object.freeze(['accuse', 'agree', 'vouch', 'defend', 'filler']);
+export const DAY_BEFORE_KEYS = Object.freeze(['accuse', 'agree', 'vouch', 'defend', 'protectMe', 'protectThem', 'filler']);
 export const validOnRound = (key, round) => round !== 0 || DAY_BEFORE_KEYS.includes(key);
 // The Say sheet's menu for a round.
 export const humanKeys = (round) => HUMAN_KEYS.filter((k) => validOnRound(k, round));

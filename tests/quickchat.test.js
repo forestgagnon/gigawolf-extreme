@@ -41,7 +41,7 @@ function day(roles, settings = {}, { dayZero = false } = {}) {
   return g;
 }
 const ROLES = ['villager', 'werewolf', 'seer', 'villager', 'villager', 'villager'];
-const NAMES = { accuse: ['bot-2'], agree: ['bot-2'], vouch: ['bot-2'], defend: [], bait: [], claimWolf: ['bot-2'], claimClean: ['bot-2'], counter: ['bot-2'], voteFor: ['bot-2'], voteSkip: [] };
+const NAMES = { accuse: ['bot-2'], agree: ['bot-2'], vouch: ['bot-2'], defend: [], bait: [], claimWolf: ['bot-2'], claimClean: ['bot-2'], counter: ['bot-2'], claimGuard: ['bot-2'], counterGuard: ['bot-2'], protectMe: [], protectThem: ['bot-2'], voteFor: ['bot-2'], voteSkip: [] };
 
 test('say: every human line is accepted, stored like a bot line and public to every phone', () => {
   for (const key of HUMAN_KEYS) {
@@ -375,7 +375,7 @@ test('the day 0 accusation rate is the same for every non-wolf role', () => {
 // Audit: every line that makes no sense before the first night is refused there, and never offered or chosen.
 test('day 0: lines that lean on a death, a vote or a Seer result are refused for bots and people', () => {
   const refused = Object.keys(CHAT).filter((k) => !DAY_BEFORE_KEYS.includes(k));
-  assert.deepEqual(refused.sort(), ['bait', 'claimClean', 'claimWolf', 'counter', 'detective', 'gotOne', 'oops', 'reportClean', 'reportWolf', 'rip', 'voteFor', 'voteSkip']);
+  assert.deepEqual(refused.sort(), ['bait', 'claimClean', 'claimGuard', 'claimWolf', 'counter', 'counterGuard', 'detective', 'gotOne', 'oops', 'reportClean', 'reportWolf', 'rip', 'voteFor', 'voteSkip']);
   const ids = (key) => Array.from({ length: CHAT[key].ids }, (_, i) => ['bot-2', 'bot-3'][i]);
   for (const key of Object.keys(CHAT)) {
     const g = day(ROLES, {}, { dayZero: true });
@@ -386,7 +386,7 @@ test('day 0: lines that lean on a death, a vote or a Seer result are refused for
     const d1 = day(ROLES);
     assert.equal(d1.botSay('bot-1', key, 0, ids(key)).error ?? null, null, `botSay ${key} on day 1`);
   }
-  assert.deepEqual(humanKeys(0), ['accuse', 'agree', 'vouch', 'defend']);
+  assert.deepEqual(humanKeys(0), ['accuse', 'agree', 'vouch', 'defend', 'protectMe', 'protectThem']);
   assert.deepEqual(humanKeys(1), [...HUMAN_KEYS]);
   assert.ok(validOnRound('voteSkip', 3) && !validOnRound('voteSkip', 0));
 });
@@ -415,4 +415,108 @@ test('day 0: a bot of any role and personality only says lines that make sense t
     }
   }
   for (const k of ['accuse', 'defend']) assert.ok(seen.has(k), `bots never said ${k} on day 0`);
+});
+
+// Bodyguard and protection lines (v1.33.0).
+test('every line has English and Thai text for every wording', () => {
+  try {
+    for (const [key, c] of Object.entries(CHAT)) {
+      for (let v = 0; v < c.variants; v++) {
+        const k = `chat.${key}.${v}`;
+        setLang('en'); const en = t(k, { a: 'A', b: 'B' });
+        setLang('th'); const th = t(k, { a: 'A', b: 'B' });
+        assert.notEqual(en, k, `en ${k}`);
+        assert.notEqual(th, k, `th ${k}`);
+        assert.notEqual(en, th, `${k} not translated`);
+      }
+    }
+  } finally { setLang('en'); }
+});
+
+test('Bodyguard lines: refused on day 0, protection pleas allowed there', () => {
+  for (const key of ['claimGuard', 'counterGuard']) assert.ok(!validOnRound(key, 0) && validOnRound(key, 1), key);
+  for (const key of ['protectMe', 'protectThem']) assert.ok(validOnRound(key, 0) && validOnRound(key, 1), key);
+  const g = day(ROLES, {}, { dayZero: true });
+  assert.ok(!g.say('p0', 'protectMe', 0, []).error);
+  assert.ok(!g.say('p0', 'protectThem', 2, ['bot-2']).error);
+  assert.equal(g.say('p0', 'claimGuard', 0, ['bot-2']).error?.code, 'badLine');
+  assert.equal(g.say('p0', 'protectThem', 0, []).error?.code, 'badLine', 'protectThem names one player');
+  assert.equal(g.say('p0', 'protectMe', 0, ['bot-2']).error?.code, 'badLine', 'protectMe names nobody');
+  assert.equal(g.say('p0', 'protectThem', 3, ['bot-2']).error?.code, 'badLine', 'only three wordings');
+});
+
+test('a Bodyguard claim is a soft signal: rivals and a repeated target look worse, nobody is cleared', () => {
+  const mind = (g, viewer = 'bot-3') => { const m = new BotMind(viewer, 'sheep', createRng(1)); m.observe(viewFor(g.s, viewer)); return m; };
+  const g = day(ROLES);
+  const before = mind(g).score('bot-2');
+  g.s = g.botSay('bot-4', 'claimGuard', 0, ['bot-2']).state;
+  const one = mind(g);
+  assert.equal(one.score('bot-2'), before, 'a guard claim does not clear its target');
+  assert.equal(one.score('bot-4'), mind(day(ROLES)).score('bot-4'), 'one claimant alone is not marked');
+  g.s = g.botSay('bot-5', 'claimGuard', 1, ['bot-1']).state;
+  const two = mind(g);
+  assert.ok(two.score('bot-4') > one.score('bot-4') && two.score('bot-5') > 0, 'two claimants cannot both be the Bodyguard');
+  const rep = mind(g); rep.observe(viewFor(g.s, 'bot-3'));
+  assert.equal(rep.score('bot-4'), two.score('bot-4'), 'reading the same feed twice marks nobody twice');
+  // The same target two nights running is against the rules.
+  const h = day(ROLES);
+  h.s = h.botSay('bot-4', 'claimGuard', 0, ['bot-2']).state;
+  h.s.round = 2;
+  h.s = h.botSay('bot-4', 'claimGuard', 0, ['bot-2']).state;
+  const flat = day(ROLES); flat.s = flat.botSay('bot-4', 'claimGuard', 0, ['bot-2']).state; flat.s.round = 2; flat.s = flat.botSay('bot-4', 'claimGuard', 0, ['bot-1']).state;
+  assert.ok(mind(h).score('bot-4') > mind(flat).score('bot-4'), 'the same guard two nights running looks worse');
+  // A counter calls the named player a liar and makes the named bot defend itself.
+  const c = day(ROLES);
+  c.s = c.say('p0', 'counterGuard', 0, ['bot-3']).state;
+  const named = new BotMind('bot-3', 'sheep', createRng(1));
+  named.observe(viewFor(c.s, 'bot-3'));
+  assert.ok(named.underFire(), 'the named bot is under fire');
+  assert.ok(mind(c, 'bot-4').score('bot-3') > mind(day(ROLES), 'bot-4').score('bot-3'));
+});
+
+test('a Bodyguard bot leans toward a player who asked for protection and is not suspected', () => {
+  const picks = (asked) => {
+    let hits = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const g = day(['villager', 'werewolf', 'bodyguard', 'villager', 'villager', 'villager']);
+      if (asked) g.s = g.say('p0', 'protectThem', 0, ['bot-4']).state;
+      const m = new BotMind('bot-2', 'sheep', createRng(seed));
+      m.observe(viewFor(g.s, 'bot-2'));
+      m.view = { ...m.view, round: 2 }; // the night after day 1
+      const targets = g.s.players.filter((p) => p.alive).map((p) => p.id);
+      if (m.night({ kind: 'bodyguard', required: true, targets, picks: 1 }).extra.targetId === 'bot-4') hits++;
+    }
+    return hits;
+  };
+  assert.ok(picks(true) >= picks(false) + 10, `${picks(true)} vs ${picks(false)}`);
+});
+
+test('whether a bot asks for protection depends on public facts, never on its role', () => {
+  const roles = ['villager', 'werewolf', 'seer', 'bodyguard', 'witch', 'hunter', 'prince', 'diseased', 'apprentice', 'poltergeist', 'jester'];
+  for (let seed = 1; seed <= 80; seed++) {
+    const outs = new Set();
+    for (const role of roles) {
+      const g = day(['villager', 'werewolf', 'villager', role, 'villager', 'villager', 'villager']);
+      g.s = g.say('p0', 'accuse', 0, ['bot-3']).state;
+      const m = new BotMind('bot-3', 'hothead', createRng(seed));
+      m.observe(viewFor(g.s, 'bot-3'));
+      outs.add(JSON.stringify(m.pleaLine(g.s.players.filter((p) => p.alive && p.id !== 'bot-3').map((p) => p.id))));
+    }
+    assert.equal(outs.size, 1, `seed ${seed}: ${[...outs].join(' | ')}`);
+  }
+});
+
+test('bots ask for protection now and then, and on day 0 too', () => {
+  const seen = new Set();
+  for (const dayZero of [false, true]) {
+    for (let seed = 1; seed <= 400; seed++) {
+      const g = day(ROLES, {}, { dayZero });
+      g.s = g.say('p0', 'accuse', 0, ['bot-3']).state;
+      const m = new BotMind('bot-3', 'hothead', createRng(seed));
+      m.observe(viewFor(g.s, 'bot-3'));
+      const l = m.pleaLine(['p0', 'bot-1', 'bot-2', 'bot-4', 'bot-5'].filter((id) => g.s.players.some((p) => p.id === id)));
+      if (l) { seen.add(`${dayZero}:${l.key}`); assert.ok(!dayZero || DAY_BEFORE_KEYS.includes(l.key)); assert.ok(!g.botSay('bot-3', l.key, l.v, l.ids).error); }
+    }
+  }
+  assert.ok(seen.has('false:protectMe') && seen.has('true:protectMe'), [...seen].join());
 });
